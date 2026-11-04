@@ -97,6 +97,11 @@ Mocking and intercepting external calls.
 - **Packages:** [`jest`](https://www.npmjs.com/package/jest), [`nock`](https://www.npmjs.com/package/nock)
 - **Install:** `npm install --save-dev jest nock supertest`
 
+### 18. 🗝️ [_18_🗝️_Keycloak_Authentication](./_18_🗝️_Keycloak_Authentication)
+Self-hosted SSO, RBAC, and token-based API protection.
+- **Packages:** [`jose`](https://www.npmjs.com/package/jose), [`openid-client`](https://www.npmjs.com/package/openid-client), [`@keycloak/keycloak-admin-client`](https://www.npmjs.com/package/@keycloak/keycloak-admin-client)
+- **Install:** `npm install jose openid-client express-session`
+
 ---
 
 ## 🛠️ General Principles for Integration
