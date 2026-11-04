@@ -102,6 +102,41 @@ Self-hosted SSO, RBAC, and token-based API protection.
 - **Packages:** [`jose`](https://www.npmjs.com/package/jose), [`openid-client`](https://www.npmjs.com/package/openid-client), [`@keycloak/keycloak-admin-client`](https://www.npmjs.com/package/@keycloak/keycloak-admin-client)
 - **Install:** `npm install jose openid-client express-session`
 
+### 19. 🗄️ [_19_🗄️_Caching_Redis](./_19_🗄️_Caching_Redis)
+Cache-aside, invalidation, stampede protection, sessions, and distributed locks.
+- **Packages:** [`ioredis`](https://www.npmjs.com/package/ioredis), [`redis`](https://www.npmjs.com/package/redis)
+- **Install:** `npm install ioredis`
+
+### 20. 📨 [_20_📨_Message_Brokers](./_20_📨_Message_Brokers)
+Event-driven communication between services with Kafka and RabbitMQ.
+- **Packages:** [`kafkajs`](https://www.npmjs.com/package/kafkajs), [`amqplib`](https://www.npmjs.com/package/amqplib)
+- **Install:** `npm install kafkajs amqplib`
+
+### 21. 🔌 [_21_🔌_Realtime_WebSockets](./_21_🔌_Realtime_WebSockets)
+Chat, live notifications, and tracking with WebSockets and Server-Sent Events.
+- **Packages:** [`socket.io`](https://www.npmjs.com/package/socket.io), [`ws`](https://www.npmjs.com/package/ws), [`pusher`](https://www.npmjs.com/package/pusher)
+- **Install:** `npm install socket.io @socket.io/redis-adapter ioredis`
+
+### 22. 🔑 [_22_🔑_Secrets_Config_Management](./_22_🔑_Secrets_Config_Management)
+Storing, validating, and rotating API keys and config safely.
+- **Packages:** [`zod`](https://www.npmjs.com/package/zod), [`@aws-sdk/client-secrets-manager`](https://www.npmjs.com/package/@aws-sdk/client-secrets-manager), [`dotenv`](https://www.npmjs.com/package/dotenv)
+- **Install:** `npm install zod @aws-sdk/client-secrets-manager`
+
+### 23. 🚩 [_23_🚩_Feature_Flags](./_23_🚩_Feature_Flags)
+Gradual rollouts, kill switches, and A/B tests without redeploying.
+- **Packages:** [`unleash-client`](https://www.npmjs.com/package/unleash-client), [`@launchdarkly/node-server-sdk`](https://www.npmjs.com/package/@launchdarkly/node-server-sdk), [`@openfeature/server-sdk`](https://www.npmjs.com/package/@openfeature/server-sdk)
+- **Install:** `npm install unleash-client`
+
+### 24. 🚧 [_24_🚧_Bot_Protection_CAPTCHA](./_24_🚧_Bot_Protection_CAPTCHA)
+Stopping bots on login, sign-up, OTP, and form endpoints.
+- **Packages:** Cloudflare Turnstile / reCAPTCHA via built-in `fetch`, [`hcaptcha`](https://www.npmjs.com/package/hcaptcha)
+- **Install:** none required (Node 18+ `fetch`)
+
+### 25. 📄 [_25_📄_PDF_Document_Generation](./_25_📄_PDF_Document_Generation)
+Invoices, reports, tickets, and filled forms as PDFs.
+- **Packages:** [`puppeteer`](https://www.npmjs.com/package/puppeteer), [`pdfkit`](https://www.npmjs.com/package/pdfkit), [`pdf-lib`](https://www.npmjs.com/package/pdf-lib)
+- **Install:** `npm install puppeteer handlebars pdfkit`
+
 ---
 
 ## 🛠️ General Principles for Integration
