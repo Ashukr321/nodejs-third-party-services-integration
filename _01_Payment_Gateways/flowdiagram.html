@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payment Gateway Flows</title>
+<style>
+  :root { --bg:#f7f7f8; --card:#fff; --text:#1d1d1f; --muted:#5f6368; --border:#e2e2e6; --accent:#635bff; --code:#f0f0f3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111214; --card:#1b1c1f; --text:#e8e8ea; --muted:#a0a3a8; --border:#2c2d31; --accent:#8b85ff; --code:#24252a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { margin:0 0 4px; font-size:26px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px; }
+  nav a { color:var(--accent); text-decoration:none; border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:13px; background:var(--card); }
+  section { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+  h2 { margin:0 0 6px; font-size:19px; }
+  section > p { color:var(--muted); margin:0 0 14px; }
+  .mermaid { margin:0; overflow-x:auto; text-align:center; background:transparent; }
+  code, pre.src { background:var(--code); border-radius:6px; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+  code { padding:1px 5px; }
+  pre.src { padding:12px; overflow-x:auto; }
+  ol li, ul li { margin-bottom:4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Payment Gateway Flows 💳</h1>
+  <p class="sub">Mermaid diagrams for <code>_01_Payment_Gateways</code>. Open this file in any browser (needs internet for the Mermaid CDN).</p>
+
+  <nav>
+    <a href="#arch">Architecture</a>
+    <a href="#checkout">Checkout lifecycle</a>
+    <a href="#states">Payment states</a>
+    <a href="#verify">Verification</a>
+    <a href="#razorpay">Razorpay signature</a>
+    <a href="#idem">Idempotency</a>
+    <a href="#webhook-dedupe">Webhook dedupe</a>
+    <a href="#refund">Refund</a>
+    <a href="#together">Node + DB + Gateway</a>
+    <a href="#how">How to create diagrams</a>
+  </nav>
+
+  <section id="arch">
+    <h2>1. System Architecture</h2>
+    <p>Components and who talks to whom. See architecture.md.</p>
+<pre class="mermaid">
+flowchart LR
+    C[Client / Browser] -->|1. Create order| API[Node.js API]
+    API -->|2. Create PaymentIntent| GW[Payment Gateway]
+    GW -->|client_secret| API
+    API -->|client_secret| C
+    C -->|3. Card data via Stripe Elements| GW
+    GW -->|4. Webhook event| WH[Webhook Handler]
+    WH -->|update order| DB[(Database)]
+    API --> DB
+    API --> R[(Redis: idempotency)]
+    WH --> Q[[Queue]]
+    Q --> W[Worker: email, invoice, stock]
+</pre>
+  </section>
+
+  <section id="checkout">
+    <h2>2. Checkout Request Lifecycle</h2>
+    <p>End-to-end Stripe payment with 3D Secure. The webhook, not the redirect, marks the order paid.</p>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as Node.js API
+    participant D as Database
+    participant G as Gateway (Stripe)
+    participant B as Bank (3DS)
+
+    C->>A: POST /orders (cart, Idempotency-Key)
+    A->>D: Create order (status: pending)
+    A->>G: paymentIntents.create(amount, metadata.orderId)
+    G-->>A: client_secret
+    A-->>C: client_secret
+    C->>G: confirmPayment(card via Elements)
+    G->>B: 3D Secure challenge (if needed)
+    B-->>G: Approved
+    G-->>C: Redirect to return_url
+    G->>A: Webhook payment_intent.succeeded
+    A->>A: Verify signature, dedupe event.id
+    A->>D: Mark order paid (amount + currency checked)
+    A-->>G: 200 OK
+</pre>
+  </section>
+
+  <section id="states">
+    <h2>3. Payment State Machine (Stripe PaymentIntent)</h2>
+    <p>Every status a PaymentIntent can move through.</p>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> requires_payment_method
+    requires_payment_method --> requires_confirmation
+    requires_confirmation --> requires_action: 3DS needed
+    requires_confirmation --> processing
+    requires_action --> processing
+    processing --> requires_capture: manual capture
+    processing --> succeeded
+    processing --> requires_payment_method: declined
+    requires_capture --> succeeded: capture
+    requires_capture --> canceled
+    requires_payment_method --> canceled
+    succeeded --> [*]
+    canceled --> [*]
+</pre>
+  </section>
+
+  <section id="verify">
+    <h2>4. Payment Verification (Webhook)</h2>
+    <p>What the server checks before fulfilling an order. See Payment verification.md.</p>
+<pre class="mermaid">
+flowchart TD
+    A[Webhook POST received] --> B{Raw body + signature valid?}
+    B -- No --> X[Return 400, ignore]
+    B -- Yes --> C{event.id already processed?}
+    C -- Yes --> Y[Return 200, skip]
+    C -- No --> D{Status succeeded / captured?}
+    D -- No --> E[Update order: failed / pending]
+    D -- Yes --> F{Amount and currency match DB order?}
+    F -- No --> G[Mark amount_mismatch, alert team]
+    F -- Yes --> H[Mark order paid, only if status = pending]
+    H --> I[Save event.id as processed]
+    I --> J[Push email / invoice / stock jobs to queue]
+    J --> K[Return 200 OK fast]
+    E --> K
+    G --> K
+</pre>
+  </section>
+
+  <section id="razorpay">
+    <h2>5. Razorpay Checkout Signature Verification</h2>
+    <p>HMAC-SHA256 of <code>order_id|payment_id</code> with the key secret.</p>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as Node.js API
+    participant R as Razorpay
+    participant D as Database
+
+    C->>A: POST /orders
+    A->>R: orders.create(amount, receipt)
+    R-->>A: razorpay_order_id
+    A->>D: Save order (pending, razorpay_order_id)
+    A-->>C: razorpay_order_id, key_id
+    C->>R: Open Razorpay Checkout, user pays
+    R-->>C: payment_id, order_id, signature
+    C->>A: POST /payments/razorpay/verify
+    A->>A: HMAC_SHA256(order_id + "|" + payment_id, key_secret)
+    alt signature matches (timingSafeEqual)
+        A->>R: payments.fetch(payment_id)
+        R-->>A: amount, status captured
+        A->>D: Mark paid if amount matches
+        A-->>C: 200 OK
+    else mismatch
+        A-->>C: 400 Invalid signature
+    end
+</pre>
+  </section>
+
+  <section id="idem">
+    <h2>6. Idempotency (Client to API)</h2>
+    <p>Redis <code>SET NX</code> lock so double clicks and retries never charge twice. See Idempotency.md.</p>
+<pre class="mermaid">
+flowchart TD
+    A[POST /orders with Idempotency-Key] --> B{Key present?}
+    B -- No --> X[400 Bad Request]
+    B -- Yes --> C[Redis SET idem:user:key processing NX EX 86400]
+    C --> D{Key was new?}
+    D -- Yes --> E[Process request]
+    E --> F[Call gateway with idempotencyKey = order id]
+    F --> G{Response 5xx?}
+    G -- Yes --> H[Delete key so retry can run]
+    G -- No --> I[Store status code + body under key]
+    D -- No --> J{Stored status?}
+    J -- processing --> K[409 Request in progress]
+    J -- done --> L[Replay stored response]
+</pre>
+  </section>
+
+  <section id="webhook-dedupe">
+    <h2>7. Webhook Duplicate Delivery</h2>
+    <p>Gateways deliver at least once. A unique index on <code>eventId</code> makes reprocessing a no-op.</p>
+<pre class="mermaid">
+sequenceDiagram
+    participant G as Gateway
+    participant A as Webhook Handler
+    participant D as Database
+
+    G->>A: event evt_123 (attempt 1)
+    A->>D: insert ProcessedEvent(evt_123)
+    D-->>A: OK
+    A->>D: update order pending to paid
+    Note over G,A: Response lost / timeout
+    G->>A: event evt_123 (retry)
+    A->>D: insert ProcessedEvent(evt_123)
+    D-->>A: E11000 duplicate key
+    A-->>G: 200 OK (duplicate, skipped)
+</pre>
+  </section>
+
+  <section id="refund">
+    <h2>8. Refund Flow</h2>
+    <p>Reserve amount atomically, call gateway with idempotency key, confirm via webhook. See Refund handling.md.</p>
+<pre class="mermaid">
+flowchart TD
+    A[Admin requests refund: orderId, amount, reason] --> B{Order paid / partially_refunded AND refunded + amount within total?}
+    B -- No --> X[Reject: not refundable]
+    B -- Yes --> C[Atomically increment refundedAmount]
+    C --> D[Create Refund record: requested]
+    D --> E[Gateway refunds.create with idempotencyKey = refund id]
+    E --> F{Gateway accepted?}
+    F -- No --> G[Roll back refundedAmount, Refund = failed]
+    F -- Yes --> H[Refund = pending, Order = partially_refunded / refunded]
+    H --> I[Wait for webhook]
+    I --> J{refund.updated / refund.processed / refund.failed}
+    J -- succeeded --> K[Refund = succeeded, notify customer, restock]
+    J -- failed --> L[Roll back refundedAmount, alert support]
+</pre>
+  </section>
+
+  <section id="together">
+    <h2>9. How the Node App, DB and Payment Gateway Work Together</h2>
+    <p>The gateway only moves money. Your Node app decides what is paid for, your DB remembers it. The link is your <code>orderId</code>, sent in gateway <code>metadata</code> and returned in every webhook. Full table in architecture.md.</p>
+<pre class="mermaid">
+flowchart LR
+    UI[Client: checkout page + Stripe Elements]
+    subgraph NodeApp[Node.js App]
+        MW[idempotency middleware] --> RT[routes] --> CT[controllers] --> SV[payment.service]
+        SV --> GWS[gateway.js: stripe SDK]
+        WH[webhook route: raw body] --> SV
+    end
+    DB[(MongoDB: Order, Refund, ProcessedEvent)]
+    RD[(Redis: idempotency keys)]
+    Q[[Queue: email, invoice, stock]]
+    GW[Stripe / Razorpay]
+
+    UI -->|1. POST /orders| MW
+    MW --- RD
+    SV -->|2. Order pending| DB
+    GWS -->|3. create PaymentIntent + orderId| GW
+    SV -.->|4. client_secret| UI
+    UI -->|5. pay| GW
+    GW -->|6. webhook| WH
+    SV -->|7. Order paid| DB
+    SV -->|8. jobs| Q
+</pre>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant N as Node App
+    participant D as MongoDB
+    participant G as Gateway
+
+    C->>N: POST /orders (cart)
+    N->>D: Read product prices (never trust client price)
+    N->>D: Order {status: pending, amount: 49900}
+    N->>G: create PaymentIntent (metadata.orderId)
+    G-->>N: pi_123 + client_secret
+    N->>D: Order {gatewayPaymentId: pi_123}
+    N-->>C: client_secret
+    C->>G: Pay (card / UPI / 3DS)
+    G->>N: webhook payment_intent.succeeded
+    N->>D: ProcessedEvent {eventId}
+    N->>D: Order pending to paid
+    N-->>G: 200 OK
+    Note over N,D: Daily cron reconciles gateway records with DB
+</pre>
+    <ol>
+      <li><strong>Client</strong> sends only cart items; never the price or the secret key.</li>
+      <li><strong>Node app</strong> prices the cart from the DB and saves a <code>pending</code> order first, so every payment has an owner.</li>
+      <li><strong>gateway.js</strong> is the only file that imports the Stripe/Razorpay SDK; the rest of the app calls it.</li>
+      <li><strong>Webhook</strong> is what flips the order to <code>paid</code>, after signature, dedupe and amount checks.</li>
+      <li><strong>Queue</strong> handles email, invoice and stock so the webhook replies fast.</li>
+    </ol>
+  </section>
+
+  <section id="how">
+    <h2>How to create and edit these diagrams</h2>
+    <p>Every diagram above is plain text written in <a href="https://mermaid.js.org/" style="color:var(--accent)">Mermaid</a> syntax. The browser turns it into SVG.</p>
+    <ol>
+      <li><strong>Add the script once</strong> (already at the bottom of this file):
+<pre class="src">&lt;script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;mermaid.initialize({ startOnLoad: true });&lt;/script&gt;</pre></li>
+      <li><strong>Add a diagram</strong>: put Mermaid text inside a <code>&lt;pre class="mermaid"&gt;</code> block:
+<pre class="src">&lt;pre class="mermaid"&gt;
+flowchart TD
+    A[Start] --&gt; B{Paid?}
+    B -- Yes --&gt; C[Ship order]
+    B -- No --&gt; D[Retry payment]
+&lt;/pre&gt;</pre></li>
+      <li><strong>Pick a diagram type</strong> for the job:
+        <ul>
+          <li><code>flowchart TD</code> / <code>LR</code>: decisions and steps (verification, refund). <code>[box]</code>, <code>{decision}</code>, <code>[(database)]</code>, <code>[[queue]]</code>.</li>
+          <li><code>sequenceDiagram</code>: who calls whom, in order (checkout, Razorpay). <code>-&gt;&gt;</code> call, <code>--&gt;&gt;</code> reply, <code>alt / else / end</code> branches.</li>
+          <li><code>stateDiagram-v2</code>: status transitions (PaymentIntent states).</li>
+        </ul>
+      </li>
+      <li><strong>Avoid a literal <code>&lt;</code></strong> inside diagram text in HTML; write it as <code>&amp;lt;</code> or reword it.</li>
+      <li><strong>Draft in the live editor</strong> at <a href="https://mermaid.live" style="color:var(--accent)">mermaid.live</a>, then paste the text here.</li>
+      <li><strong>In Markdown</strong> (GitHub, VS Code preview) use a fenced block with language <code>mermaid</code>; architecture.md does this, so GitHub renders it directly.</li>
+    </ol>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    securityLevel: 'strict'
+  });
+</script>
+</body>
+</html>
