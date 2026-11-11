@@ -5,7 +5,9 @@ import GithubSlugger from "github-slugger";
 
 // The guides live one level up, in the repo's _NN_Topic folders. Read at build time only:
 // every page is statically generated, so the runtime (Vercel / Docker) never touches the disk.
-const CONTENT_DIR = process.env.CONTENT_DIR ?? path.join(process.cwd(), "..");
+const CONTENT_DIR =
+    process.env.CONTENT_DIR ??
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "..");
 
 export type Heading = { depth: 2 | 3; text: string; id: string };
 export type Page = {
@@ -123,18 +125,27 @@ export function htmlDiagramsToMarkdown(html: string) {
 }
 
 function readEmojis(): Record<number, string> {
-    const readme = path.join(CONTENT_DIR, "README.md");
-    if (!fs.existsSync(readme)) return {};
+    const readme = path.join(
+        /*turbopackIgnore: true*/ CONTENT_DIR,
+        "README.md",
+    );
+    if (!fs.existsSync(/*turbopackIgnore: true*/ readme)) return {};
     const map: Record<number, string> = {};
     for (const [, n, emoji] of fs
-        .readFileSync(readme, "utf8")
+        .readFileSync(/*turbopackIgnore: true*/ readme, "utf8")
         .matchAll(/^###\s+(\d+)\.\s+(\S+)\s/gm))
         map[+n] = emoji;
     return map;
 }
 
 function loadPage(dir: string, file: string): Page {
-    const raw = fs.readFileSync(path.join(dir, file), "utf8");
+    const raw = fs.readFileSync(
+        /*turbopackIgnore: true*/ path.join(
+            /*turbopackIgnore: true*/ dir,
+            file,
+        ),
+        "utf8",
+    );
     const markdown = file.endsWith(".html") ? htmlDiagramsToMarkdown(raw) : raw;
     const slug = fileSlug(file);
     const h1 = /^#\s+(.+)$/m.exec(markdown)?.[1];
@@ -157,13 +168,18 @@ export function getTopics(): Topic[] {
     if (cache) return cache;
     const emojis = readEmojis();
     cache = fs
-        .readdirSync(CONTENT_DIR, { withFileTypes: true })
+        .readdirSync(/*turbopackIgnore: true*/ CONTENT_DIR, {
+            withFileTypes: true,
+        })
         .flatMap((d) => {
             const m = d.isDirectory() && /^_(\d+)_(.+)$/.exec(d.name);
             if (!m) return [];
-            const dir = path.join(CONTENT_DIR, d.name);
+            const dir = path.join(
+                /*turbopackIgnore: true*/ CONTENT_DIR,
+                d.name,
+            );
             const pages = fs
-                .readdirSync(dir)
+                .readdirSync(/*turbopackIgnore: true*/ dir)
                 .filter((f) => /\.(md|html)$/i.test(f))
                 .map((f) => loadPage(dir, f))
                 .sort(
