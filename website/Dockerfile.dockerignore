@@ -1,0 +1,9 @@
+# Used by BuildKit for website/Dockerfile (context = repo root)
+.git
+**/node_modules
+**/.next
+**/.env*
+!**/.env.example
+**/.vercel
+**/coverage
+**/*.log
