@@ -79,6 +79,12 @@ export default function RootLayout({
             className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
             <body className="min-h-dvh">
+                {/* restore collapsed sidebar before paint to avoid a flash */}
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `try{if(localStorage.getItem("sidebar")==="collapsed")document.documentElement.dataset.sidebar="collapsed"}catch(e){}`,
+                    }}
+                />
                 <Providers>
                     <a
                         href="#main"
@@ -88,8 +94,10 @@ export default function RootLayout({
                     </a>
                     <SiteHeader nav={nav} />
                     <div className="mx-auto flex w-full max-w-[1600px]">
-                        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-72 shrink-0 overflow-y-auto border-r px-3 py-6 lg:block">
-                            <SidebarNav nav={nav} />
+                        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-72 shrink-0 overflow-x-hidden overflow-y-auto border-r px-3 py-6 transition-[width,padding,border-width,visibility] duration-300 ease-out in-data-[sidebar=collapsed]:invisible in-data-[sidebar=collapsed]:w-0 in-data-[sidebar=collapsed]:border-r-0 in-data-[sidebar=collapsed]:px-0 motion-reduce:transition-none lg:block">
+                            <div className="w-66">
+                                <SidebarNav nav={nav} />
+                            </div>
                         </aside>
                         <main id="main" className="min-w-0 flex-1">
                             {children}
