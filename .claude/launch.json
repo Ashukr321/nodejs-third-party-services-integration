@@ -4,8 +4,27 @@
     {
       "name": "website",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "website", "run", "start"],
+      "runtimeArgs": [
+        "--prefix",
+        "website",
+        "run",
+        "start"
+      ],
       "port": 3000
+    },
+    {
+      "name": "website-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "website",
+        "run",
+        "dev"
+      ],
+      "port": 3001,
+      "env": {
+        "PORT": "3001"
+      }
     }
   ]
 }
